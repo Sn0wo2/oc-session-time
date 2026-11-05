@@ -1,0 +1,55 @@
+{
+  "name": "oc-session-time",
+  "version": "0.1.0",
+  "description": "OpenCode V2 plugin that freezes sessions and schedules resuming/new sessions with current TUI model",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Me0wo",
+  "keywords": [
+    "opencode",
+    "opencode2",
+    "opencode-plugin",
+    "session",
+    "scheduler"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sn0wo2/oc-session-time.git"
+  },
+  "packageManager": "bun@1.4.4",
+  "engines": {
+    "node": ">=24"
+  },
+  "files": [
+    "src",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": "./src/index.ts",
+    "./tui": "./src/tui.ts"
+  },
+  "scripts": {
+    "lint": "biome check --error-on-warnings .",
+    "lint:fix": "biome check --write --error-on-warnings .",
+    "check": "tsc --noEmit",
+    "security": "bun audit --registry=https://registry.npmjs.org",
+    "ci": "bun run lint && bun run check && bun run security",
+    "release": "goreleaser release --clean",
+    "release:dry": "goreleaser release --clean --snapshot"
+  },
+  "dependencies": {
+    "@opencode/plugin": "2.2.5",
+    "@opencode/schema": "2.2.5",
+    "solid-js": "^1.9.18",
+    "zod": "^4.6.7"
+  },
+  "overrides": {
+    "glob": "14.0.3",
+    "minimatch": "11.0.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.5",
+    "@types/bun": "^1.4.4",
+    "typescript": "^7.0.2"
+  }
+}
