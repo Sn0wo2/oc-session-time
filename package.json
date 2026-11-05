@@ -1,7 +1,7 @@
 {
   "name": "oc-session-time",
-  "version": "0.1.0",
-  "description": "OpenCode V2 plugin that freezes sessions and schedules resuming/new sessions with current TUI model",
+  "version": "0.0.0",
+  "description": "OpenCode2 plugin that freezes sessions and schedules resuming or new sessions with the current TUI model",
   "type": "module",
   "license": "Apache-2.0",
   "author": "Me0wo",
