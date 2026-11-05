@@ -1,19 +1,10 @@
 import { Plugin } from "@opencode/plugin/tui"
 import { createComponent, createEffect, onCleanup } from "solid-js"
-import type { output } from "zod"
-import { type Job as JobSchema, SessionTime } from "./rpc.ts"
+import { type Job, SessionTime } from "./rpc.ts"
+import { splitFirstToken } from "./utils/text.ts"
 import { parseWhen } from "./utils/time.ts"
 
-type Job = output<typeof JobSchema>
-
-const WHITESPACE = /\s/
 const WHITESPACE_RUN = /\s+/g
-
-const splitFirstToken = (input?: string) => {
-  const value = (input ?? "").trimStart()
-  const boundary = value.search(WHITESPACE)
-  return boundary < 0 ? ([value, ""] as const) : ([value.slice(0, boundary), value.slice(boundary + 1)] as const)
-}
 
 const CommandsHost = (props: { ctx: Plugin.Context }) => {
   const { ctx } = props
@@ -66,11 +57,9 @@ const CommandsHost = (props: { ctx: Plugin.Context }) => {
     running = true
 
     try {
-      if (!alive) return { kind: "disposed" as const }
       const current = ctx.ui.model.current()
       if (!current) return { kind: "no-model" as const }
 
-      if (!alive) return { kind: "disposed" as const }
       const result = await rpc.run(
         {
           id: job.id,

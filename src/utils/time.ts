@@ -1,103 +1,55 @@
 const DURATION_PART = /^(\d+(?:\.\d+)?|\.\d+)([smhdw])/i
 const ISO_TIMESTAMP = /^(\d{4})-(\d{2})-(\d{2})[Tt](\d{2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?(Z|[+-]\d{2}:\d{2})$/i
 
-export function parseWhen(input: string, now = Date.now()): number {
-  const value = input.trim()
+const DURATION_MS: Record<string, number> = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
+const MONTH_DAYS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+
+const isLeapYear = (year: number) => year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0)
+
+function parseDuration(value: string, now: number): number | undefined {
   let remaining = value
   let duration = 0
-  let durationParts = 0
-  let validDuration = true
-
+  let parts = 0
   while (remaining) {
     const match = DURATION_PART.exec(remaining)
-    const amountText = match?.[1]
-    const unitText = match?.[2]?.toLowerCase()
-    if (!match || amountText === undefined || unitText === undefined) {
-      validDuration = false
-      break
-    }
-
-    const amount = Number(amountText)
-    if (!Number.isFinite(amount)) {
-      validDuration = false
-      break
-    }
-
-    let multiplier = 0
-    switch (unitText) {
-      case "s":
-        multiplier = 1000
-        break
-      case "m":
-        multiplier = 60_000
-        break
-      case "h":
-        multiplier = 3_600_000
-        break
-      case "d":
-        multiplier = 86_400_000
-        break
-      case "w":
-        multiplier = 604_800_000
-        break
-      default:
-        validDuration = false
-        break
-    }
-    if (!validDuration) break
-
-    duration += amount * multiplier
-    if (!Number.isFinite(duration)) {
-      validDuration = false
-      break
-    }
-    durationParts += 1
+    if (!match) return undefined
+    const unit = match[2]?.toLowerCase()
+    if (!unit) return undefined
+    const multiplier = DURATION_MS[unit]
+    if (multiplier === undefined) return undefined
+    duration += Number(match[1]) * multiplier
+    if (!Number.isFinite(duration)) return undefined
+    parts += 1
     remaining = remaining.slice(match[0].length).trimStart()
   }
+  return parts > 0 && duration > 0 ? Math.ceil(now + duration) : undefined
+}
 
-  let timestamp: number | undefined
-  if (validDuration && durationParts > 0 && duration > 0) timestamp = Math.ceil(now + duration)
-  else {
-    const match = ISO_TIMESTAMP.exec(value)
-    if (match) {
-      const year = Number(match[1])
-      const month = Number(match[2])
-      const day = Number(match[3])
-      const hour = Number(match[4])
-      const minute = Number(match[5])
-      const second = Number(match[6] ?? "0")
-      const zone = match[8]
-      const validCalendarDate =
-        month >= 1 &&
-        month <= 12 &&
-        day >= 1 &&
-        day <=
-          ([
-            31,
-            year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
-            31,
-            30,
-            31,
-            30,
-            31,
-            31,
-            30,
-            31,
-            30,
-            31,
-          ][month - 1] ?? 0)
+function parseTimestamp(value: string): number | undefined {
+  const match = ISO_TIMESTAMP.exec(value)
+  if (!match) return undefined
+  const [, year, month, day, hour, minute, second, , zone] = match
+  const monthNumber = Number(month)
+  const maxDay = monthNumber === 2 && isLeapYear(Number(year)) ? 29 : (MONTH_DAYS[monthNumber - 1] ?? 0)
+  const valid =
+    monthNumber >= 1 &&
+    monthNumber <= 12 &&
+    Number(day) >= 1 &&
+    Number(day) <= maxDay &&
+    Number(hour) <= 23 &&
+    Number(minute) <= 59 &&
+    Number(second ?? "0") <= 59 &&
+    zone !== undefined &&
+    zone !== "-00:00" &&
+    (zone.toUpperCase() === "Z" || (Number(zone.slice(1, 3)) <= 23 && Number(zone.slice(4, 6)) <= 59))
+  if (!valid) return undefined
+  const parsed = Date.parse(value)
+  return Number.isFinite(parsed) ? parsed : undefined
+}
 
-      if (validCalendarDate && hour <= 23 && minute <= 59 && second <= 59 && zone !== undefined && zone !== "-00:00") {
-        const validZone =
-          zone.toUpperCase() === "Z" || (Number(zone.slice(1, 3)) <= 23 && Number(zone.slice(4, 6)) <= 59)
-        if (validZone) {
-          const parsed = Date.parse(value)
-          timestamp = Number.isFinite(parsed) ? parsed : undefined
-        }
-      }
-    }
-  }
-
+export function parseWhen(input: string, now = Date.now()): number {
+  const value = input.trim()
+  const timestamp = parseDuration(value, now) ?? parseTimestamp(value)
   if (timestamp === undefined) {
     throw new Error("Use a positive duration such as 3h or 1h30m, or an ISO timestamp with a timezone.")
   }
@@ -105,6 +57,5 @@ export function parseWhen(input: string, now = Date.now()): number {
   if (!Number.isInteger(timestamp) || timestamp <= 0 || timestamp > 8_640_000_000_000_000) {
     throw new Error("The time is outside the supported date range.")
   }
-
   return timestamp
 }

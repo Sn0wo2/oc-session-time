@@ -1,16 +1,14 @@
 import { Plugin } from "@opencode/plugin"
 import { Goal } from "@opencode/schema/goal"
-import type { z } from "zod"
 import { Job, SessionTime } from "./rpc.ts"
-
-const whitespace = /\s/
+import { splitFirstToken } from "./utils/text.ts"
 
 export default Plugin.define({
   id: "oc-session-time",
   async setup(ctx) {
     const prefix = `jobs/${encodeURIComponent(ctx.location.directory)}/`
-    const jobs = new Map<string, z.output<typeof Job>>()
-    const frozen = new Map<string, z.output<typeof Job>>()
+    const jobs = new Map<string, Job>()
+    const frozen = new Map<string, Job>()
     const parents = new Map<string, string | undefined>()
     const controller = new AbortController()
     const goals = ctx.rpc(Goal.Definition)
@@ -30,13 +28,13 @@ export default Plugin.define({
       return result
     }
 
-    async function save(job: z.output<typeof Job>) {
+    async function save(job: Job) {
       await ctx.storage.set(prefix + job.id, job)
       jobs.set(job.id, job)
       if (job.kind === "freeze") frozen.set(job.sessionID, job)
     }
 
-    async function remove(job: z.output<typeof Job>) {
+    async function remove(job: Job) {
       await ctx.storage.remove(prefix + job.id)
       jobs.delete(job.id)
       if (frozen.get(job.sessionID)?.id === job.id) frozen.delete(job.sessionID)
@@ -76,7 +74,7 @@ export default Plugin.define({
 
     async function validateCommand(text: string) {
       if (!text.startsWith("/")) return
-      const name = text.slice(1).split(whitespace, 1)[0]
+      const [name] = splitFirstToken(text.slice(1))
       const commands = await ctx.command.list({ location: { directory: ctx.location.directory } })
       if (!commands.data.some((command) => command.name === name))
         throw new Error(`/${name} is not a registered server command. Schedule plain task text instead.`)
@@ -89,12 +87,15 @@ export default Plugin.define({
         const job = Job.parse(entry.value)
         if (entry.key !== prefix + job.id) throw new Error(`Invalid session timer storage key: ${entry.key}`)
         if (job.status === "delivering") {
-          job.status = "failed"
-          job.error = "The service stopped during delivery. Check the session, then resume explicitly if needed."
-          await ctx.storage.set(entry.key, job)
+          await save({
+            ...job,
+            status: "failed",
+            error: "The service stopped during delivery. Check the session, then resume explicitly if needed.",
+          })
+        } else {
+          jobs.set(job.id, job)
+          if (job.kind === "freeze") frozen.set(job.sessionID, job)
         }
-        jobs.set(job.id, job)
-        if (job.kind === "freeze") frozen.set(job.sessionID, job)
       }
       after = page.next
     } while (after)
@@ -140,7 +141,7 @@ export default Plugin.define({
           await ctx.session.get({ sessionID: input.sessionID })
           const previous = frozen.get(input.sessionID)
           const goal = await goals.get({ sessionID: input.sessionID })
-          const job: z.output<typeof Job> = {
+          const job: Job = {
             id: previous?.id ?? crypto.randomUUID(),
             kind: "freeze",
             sessionID: input.sessionID,
@@ -168,7 +169,7 @@ export default Plugin.define({
           if (input.dueAt <= Date.now()) throw new Error("Choose a future start time.")
           await validateCommand(input.text)
           const id = crypto.randomUUID()
-          const job: z.output<typeof Job> = {
+          const job: Job = {
             id,
             kind: "new",
             sessionID: `ses_${id}`,
@@ -229,13 +230,8 @@ export default Plugin.define({
               if (resumeGoal)
                 await ctx.session.command({ sessionID: job.sessionID, name: "goal", text: "resume", delivery: "queue" })
             } else if (job.text.startsWith("/")) {
-              const name = job.text.slice(1).split(whitespace, 1)[0] ?? ""
-              await ctx.session.command({
-                sessionID: job.sessionID,
-                name,
-                text: job.text.slice(name.length + 1).trimStart(),
-                delivery: "queue",
-              })
+              const [name, text] = splitFirstToken(job.text.slice(1))
+              await ctx.session.command({ sessionID: job.sessionID, name, text, delivery: "queue" })
             } else {
               await ctx.session.prompt({
                 sessionID: job.sessionID,
